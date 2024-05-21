@@ -41,6 +41,7 @@ var (
 	defaultDebug             = os.Getenv("DEBUG") != ""
 	defaultLogServiceTag     = os.Getenv("LOG_SERVICE_TAG")
 	defaultRelays            = os.Getenv("RELAYS")
+	defaultGateway           = os.Getenv("GATEWAY")
 	defaultRelayMonitors     = os.Getenv("RELAY_MONITORS")
 	defaultMaxRetries        = common.GetEnvInt("REQUEST_MAX_RETRIES", 5)
 
@@ -58,6 +59,8 @@ var (
 	relays        relayList
 	relayMonitors relayMonitorList
 
+	gatewayURL string
+
 	// cli flags
 	printVersion = flag.Bool("version", false, "only print version")
 	logJSON      = flag.Bool("json", defaultLogJSON, "log in JSON format instead of text")
@@ -68,6 +71,7 @@ var (
 
 	listenAddr       = flag.String("addr", defaultListenAddr, "listen-address for mev-boost server")
 	relayURLs        = flag.String("relays", defaultRelays, "relay urls - single entry or comma-separated list (scheme://pubkey@host)")
+	gateway          = flag.String("gateway", defaultGateway, "one gateway")
 	relayCheck       = flag.Bool("relay-check", defaultRelayCheck, "check relay status on startup and on the status API call")
 	relayMinBidEth   = flag.Float64("min-bid", defaultRelayMinBidEth, "minimum bid to accept from a relay [eth]")
 	relayMonitorURLs = flag.String("relay-monitors", defaultRelayMonitors, "relay monitor urls - single entry or comma-separated list (scheme://host)")
@@ -183,12 +187,15 @@ func Main() {
 		log.Infof("Min bid set to %v eth (%v wei)", relayMinBidEth, relayMinBidWei)
 	}
 
+	gatewayURL = *gateway
+
 	opts := server.BoostServiceOpts{
 		Log:                      log,
 		ListenAddr:               *listenAddr,
 		Relays:                   relays,
 		RelayMonitors:            relayMonitors,
 		GenesisForkVersionHex:    genesisForkVersionHex,
+		Gateway:                  gatewayURL,
 		GenesisTime:              genesisTime,
 		RelayCheck:               *relayCheck,
 		RelayMinBid:              *relayMinBidWei,
@@ -202,7 +209,11 @@ func Main() {
 		log.WithError(err).Fatal("failed creating the server")
 	}
 
-	if *relayCheck && service.CheckRelays() == 0 {
+	num_relays, err := service.CheckRelays()
+	if err != nil {
+		log.WithError(err).Error("relay status error - request failed")
+	}
+	if *relayCheck && num_relays == 0 {
 		log.Error("no relay passed the health-check!")
 	}
 
